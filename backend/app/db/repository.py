@@ -528,6 +528,18 @@ class PaperTrailRepository:
             ],
         )
 
+    def get_document_file_path(self, document_id: str) -> Path | None:
+        """Return the resolved absolute Path to the managed PDF file on disk, if it exists."""
+        with self._db.connect() as conn:
+            row = conn.execute(
+                "SELECT stored_path FROM documents WHERE document_id = ?;",
+                (document_id,),
+            ).fetchone()
+        if row is None or not row["stored_path"]:
+            return None
+        target = (self._storage_dir / str(row["stored_path"])).resolve()
+        return target if target.is_file() else None
+
     def list_project_documents(self, project_id: str) -> list[DocumentMetadata] | None:
         """List persisted document metadata records for a given project."""
         if not self.project_exists(project_id):

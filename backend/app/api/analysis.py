@@ -10,9 +10,11 @@ from app.api.projects import get_repository
 from app.db.repository import PaperTrailRepository
 from app.schemas import (
     GraphStructureResponse,
+    ProjectClaimGraphResponse,
     ResearchAnalysisRecord,
     ResearchAnalysisStartResponse,
 )
+from app.services.claim_graph import ClaimGraphService
 from app.services.graph.workflow import get_graph_structure, run_research_workflow
 from app.services.paper_extractor import ScientificPaperExtractor
 
@@ -100,3 +102,30 @@ async def get_project_analysis(
         )
 
     return record
+
+
+@router.get(
+    "/api/projects/{project_id}/claim-graph",
+    response_model=ProjectClaimGraphResponse,
+    status_code=HTTPStatus.OK,
+    summary="Get Interactive Claim-to-Evidence Graph",
+    description=(
+        "Returns the structured claim-to-evidence graph for a research project, "
+        "including papers, claims, evidence passages, datasets, methods, and evaluation metrics, "
+        "as well as cross-paper claim relationships (potential contradictions, agreements, conditional differences)."
+    ),
+)
+async def get_project_claim_graph(
+    project_id: str,
+    repository: PaperTrailRepository = Depends(get_repository),
+) -> ProjectClaimGraphResponse:
+    """Return the structured claim-to-evidence graph for research analyses in a project."""
+    if not repository.project_exists(project_id):
+        raise HTTPException(
+            status_code=HTTPStatus.NOT_FOUND,
+            detail=f"Research project '{project_id}' was not found.",
+        )
+
+    service = ClaimGraphService(repository=repository)
+    return service.build_claim_graph(project_id)
+

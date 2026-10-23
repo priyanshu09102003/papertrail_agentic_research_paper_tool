@@ -4,6 +4,7 @@ from functools import lru_cache
 from http import HTTPStatus
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from fastapi.responses import FileResponse
 
 from app.api.llm import get_extraction_llm_provider, get_llm_provider
 from app.api.projects import get_repository
@@ -154,3 +155,33 @@ async def get_scientific_extraction(
             detail=f"No scientific extraction found for document '{document_id}'.",
         )
     return extraction
+
+
+@router.get(
+    "/{document_id}/file",
+    summary="Download or View Research PDF File",
+    description="Streams the raw uploaded PDF file from managed storage.",
+)
+async def get_document_file(
+    document_id: str,
+    repo: PaperTrailRepository = Depends(get_repository),
+) -> FileResponse:
+    """Stream the physical PDF document binary for in-browser viewing or download."""
+    doc = repo.get_document(document_id)
+    if doc is None:
+        raise HTTPException(
+            status_code=HTTPStatus.NOT_FOUND,
+            detail=f"Document '{document_id}' was not found.",
+        )
+    file_path = repo.get_document_file_path(document_id)
+    if file_path is None or not file_path.exists():
+        raise HTTPException(
+            status_code=HTTPStatus.NOT_FOUND,
+            detail=f"Physical file for document '{document_id}' was not found in storage.",
+        )
+    return FileResponse(
+        path=str(file_path),
+        media_type="application/pdf",
+        filename=doc.filename,
+    )
+

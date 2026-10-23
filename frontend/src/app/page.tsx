@@ -1,68 +1,157 @@
-import Image from "next/image";
+'use client';
 
-export default function Home() {
+import React, { useEffect, useState } from 'react';
+import { ClaimGraphViewer } from '@/components/ClaimGraphViewer';
+import {
+  FolderGit2,
+  Sparkles,
+  GitGraph,
+  RefreshCw,
+  PlusCircle,
+  FileText,
+  AlertCircle,
+} from 'lucide-react';
+import { ProjectSummary } from '@/types/claim-graph';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+export default function HomePage() {
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('');
+  const [loadingProjects, setLoadingProjects] = useState(true);
+  const [newProjectName, setNewProjectName] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
+
+  const fetchProjects = async () => {
+    setLoadingProjects(true);
+    try {
+      const resp = await fetch(`${API_BASE}/api/projects`);
+      if (resp.ok) {
+        const data = await resp.json();
+        setProjects(data);
+        if (data.length > 0 && !selectedProjectId) {
+          setSelectedProjectId(data[0].id);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch projects', err);
+    } finally {
+      setLoadingProjects(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchProjects();
+  }, []);
+
+  const handleCreateProject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newProjectName.trim()) return;
+    setIsCreating(true);
+    try {
+      const resp = await fetch(`${API_BASE}/api/projects`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newProjectName }),
+      });
+      if (resp.ok) {
+        const created = await resp.json();
+        setProjects([created, ...projects]);
+        setSelectedProjectId(created.id);
+        setNewProjectName('');
+      }
+    } catch (err) {
+      console.error('Error creating project', err);
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const selectedProject = projects.find((p) => p.id === selectedProjectId);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="min-h-screen bg-zinc-50 dark:bg-black text-zinc-900 dark:text-zinc-50 flex flex-col font-sans">
+      {/* Top Navbar */}
+      <header className="sticky top-0 z-30 border-b border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-950/80 backdrop-blur px-6 py-3.5">
+        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-md">
+              <GitGraph className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-base tracking-tight">PaperTrail</span>
+                <span className="text-[10px] font-semibold uppercase tracking-wider bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full">
+                  Evidence Graph
+                </span>
+              </div>
+              <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                Cross-Paper Scientific Claim & Contradiction Analysis
+              </p>
+            </div>
+          </div>
+
+          {/* Project Selector & Actions */}
+          <div className="flex items-center gap-3">
+            {loadingProjects ? (
+              <RefreshCw className="w-4 h-4 animate-spin text-zinc-400" />
+            ) : projects.length > 0 ? (
+              <div className="flex items-center gap-2">
+                <FolderGit2 className="w-4 h-4 text-zinc-400" />
+                <select
+                  value={selectedProjectId}
+                  onChange={(e) => setSelectedProjectId(e.target.value)}
+                  className="text-xs font-semibold bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 px-3 py-1.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} ({p.id})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
+
+            {/* Quick create modal or inline form */}
+            <form onSubmit={handleCreateProject} className="flex items-center gap-1.5">
+              <input
+                type="text"
+                placeholder="New project name..."
+                value={newProjectName}
+                onChange={(e) => setNewProjectName(e.target.value)}
+                className="text-xs bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 px-3 py-1.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 w-36 sm:w-44"
+              />
+              <button
+                type="submit"
+                disabled={isCreating || !newProjectName.trim()}
+                className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm"
+              >
+                <PlusCircle className="w-3.5 h-3.5" />
+                Create
+              </button>
+            </form>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+      </header>
+
+      {/* Main Content Area */}
+      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 flex flex-col">
+        {selectedProjectId ? (
+          <ClaimGraphViewer
+            projectId={selectedProjectId}
+            projectName={selectedProject?.name}
+          />
+        ) : (
+          <div className="flex flex-col items-center justify-center min-h-[460px] bg-white dark:bg-zinc-900/60 rounded-2xl border border-dashed border-zinc-300 dark:border-zinc-800 p-12 text-center">
+            <FolderGit2 className="w-12 h-12 text-zinc-400 mb-3" />
+            <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
+              No Project Selected
+            </h3>
+            <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1 max-w-sm">
+              Create a research project or select an existing one above to visualize the claim-to-evidence graph.
+            </p>
+          </div>
+        )}
       </main>
     </div>
   );

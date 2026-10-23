@@ -601,3 +601,75 @@ class GraphStructureResponse(BaseModel):
     nodes: list[GraphNodeInfo] = Field(default_factory=list)
     edges: list[GraphEdgeInfo] = Field(default_factory=list)
     mermaid_diagram: str = Field(..., description="Mermaid diagram representation of the graph.")
+
+
+# -----------------------------------------------------------------------------
+# Claim-to-Evidence Interactive Graph Schemas
+# -----------------------------------------------------------------------------
+
+ClaimGraphNodeType = Literal["paper", "claim", "evidence", "dataset", "method", "metric"]
+ClaimGraphEdgeType = Literal[
+    "reports",
+    "supported_by",
+    "agrees_with",
+    "agreement",
+    "potentially_contradicts",
+    "potential_contradiction",
+    "conditional_difference",
+    "extension",
+    "incomparable",
+    "unresolved",
+    "uses_dataset",
+    "evaluated_using",
+    "depends_on",
+]
+
+
+class ClaimGraphNode(BaseModel):
+    """A node in the interactive claim-to-evidence graph."""
+
+    id: str = Field(..., description="Unique deterministic identifier for the node.")
+    type: ClaimGraphNodeType = Field(..., description="Category of node in the claim-to-evidence graph.")
+    label: str = Field(..., description="Short display label.")
+    title: str = Field(..., description="Full text title or description.")
+    document_id: str | None = Field(default=None, description="Source document identifier if applicable.")
+    paper_title: str | None = Field(default=None, description="Title of the source research paper.")
+    page_number: int | None = Field(default=None, description="Page number in the original PDF.")
+    quote: str | None = Field(default=None, description="Verbatim quote from source document.")
+    field_supported: str | None = Field(default=None, description="Section or finding field supported by evidence.")
+    status: str | None = Field(default=None, description="Status (e.g. verified, unverified, completed).")
+    pdf_url: str | None = Field(default=None, description="Direct download/view URL for the PDF if available.")
+    details: dict[str, Any] = Field(default_factory=dict, description="Additional contextual metadata.")
+    position: dict[str, float] = Field(
+        default_factory=lambda: {"x": 0.0, "y": 0.0},
+        description="Suggested 2D layout coordinates for initial canvas placement.",
+    )
+
+
+class ClaimGraphEdge(BaseModel):
+    """A directed edge in the interactive claim-to-evidence graph."""
+
+    id: str = Field(..., description="Unique deterministic identifier for the directed edge.")
+    source: str = Field(..., description="Source node ID.")
+    target: str = Field(..., description="Target node ID.")
+    label: str = Field(..., description="Display label for the edge relationship.")
+    relationship_type: ClaimGraphEdgeType = Field(..., description="Standardized relationship classification.")
+    is_contradiction: bool = Field(default=False, description="True if edge represents a potential contradiction.")
+    verification_status: VerificationStatus | None = Field(
+        default=None, description="Verification status evaluated against source text."
+    )
+    rationale: str | None = Field(default=None, description="Scientific rationale or justification.")
+    details: dict[str, Any] = Field(default_factory=dict, description="Additional relationship parameters.")
+
+
+class ProjectClaimGraphResponse(BaseModel):
+    """Full claim-to-evidence graph response for a research project."""
+
+    project_id: str = Field(..., description="Project identifier.")
+    nodes: list[ClaimGraphNode] = Field(default_factory=list, description="Unique deduplicated graph nodes.")
+    edges: list[ClaimGraphEdge] = Field(default_factory=list, description="Unique deduplicated directed edges.")
+    available_papers: list[dict[str, str]] = Field(default_factory=list, description="List of paper id & titles for filtering.")
+    available_relationship_types: list[str] = Field(default_factory=list, description="Distinct edge relationship types present.")
+    is_empty: bool = Field(default=False, description="True if no analyzed papers or claims exist.")
+    message: str | None = Field(default=None, description="Descriptive message when graph is empty or partial.")
+

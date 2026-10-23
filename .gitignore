@@ -22,8 +22,9 @@ dist/
 build/
 *.egg-info/
 
-# Application Local Caches & Databases
+# Application Local Caches, Databases & Managed Storage
 .cache/
+data/
 *.db
 *.sqlite
 *.sqlite3

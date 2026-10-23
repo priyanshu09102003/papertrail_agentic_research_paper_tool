@@ -9,8 +9,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.api.analysis import router as analysis_router
 from app.api.documents import router as documents_router
+from app.api.llm import router as llm_router
 from app.api.papers import router as papers_router
+from app.api.projects import router as projects_router
 from app.api.routes import router as api_router
 from app.config import ALLOWED_ORIGINS, APP_NAME, APP_VERSION
 from app.schemas import ErrorResponse
@@ -94,6 +97,9 @@ def create_app() -> FastAPI:
     application.include_router(api_router)
     application.include_router(papers_router)
     application.include_router(documents_router)
+    application.include_router(projects_router)
+    application.include_router(llm_router)
+    application.include_router(analysis_router)
 
     return application
 

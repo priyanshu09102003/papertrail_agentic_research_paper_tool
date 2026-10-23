@@ -1,6 +1,6 @@
 """Tests for safe PDF upload, validation, path-traversal protection, and PyMuPDF text extraction."""
 
-import fitz  # PyMuPDF
+import pymupdf as fitz  # PyMuPDF
 from fastapi.testclient import TestClient
 
 from app.api.documents import get_pdf_ingestion_service

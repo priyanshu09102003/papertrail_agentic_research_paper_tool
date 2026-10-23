@@ -6,7 +6,7 @@ import logging
 import re
 from typing import BinaryIO
 
-import fitz  # PyMuPDF
+import pymupdf as fitz  # PyMuPDF
 
 from app.config import (
     MAX_PDF_UPLOAD_SIZE_BYTES,

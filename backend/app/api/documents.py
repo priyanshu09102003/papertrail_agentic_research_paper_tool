@@ -1,12 +1,17 @@
-"""API routes for safe PDF upload, validation, and page-by-page text extraction."""
+"""API routes for safe PDF upload, validation, page-by-page text extraction, and structured scientific extraction."""
 
 from functools import lru_cache
 from http import HTTPStatus
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 
-from app.schemas import ExtractedDocument
+from app.api.llm import get_extraction_llm_provider, get_llm_provider
+from app.api.projects import get_repository
+from app.db.repository import PaperTrailRepository
+from app.llm.base import BaseLLMProvider
+from app.schemas import ExtractedDocument, ScientificPaperExtraction
 from app.services.exceptions import PDFIngestionError
+from app.services.paper_extractor import ScientificPaperExtractor
 from app.services.pdf_ingestion import PDFIngestionService
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
@@ -18,6 +23,23 @@ def get_pdf_ingestion_service() -> PDFIngestionService:
     return PDFIngestionService()
 
 
+def get_scientific_extractor(
+    request: Request,
+    provider: str = Query(
+        default="auto",
+        description="LLM provider for extraction: 'auto' (Gemini if GEMINI_API_KEY is set, else Ollama), 'gemini', or 'ollama'.",
+    ),
+    default_llm_provider: BaseLLMProvider = Depends(get_llm_provider),
+) -> ScientificPaperExtractor:
+    """Return a ScientificPaperExtractor configured with Gemini (if API key present) or local Ollama."""
+    # Preserve FastAPI dependency_overrides[get_llm_provider] used by unit tests
+    if get_llm_provider in request.app.dependency_overrides and provider == "auto":
+        return ScientificPaperExtractor(llm_provider=default_llm_provider)
+
+    active_provider = get_extraction_llm_provider(provider)
+    return ScientificPaperExtractor(llm_provider=active_provider)
+
+
 @router.post(
     "/upload",
     response_model=ExtractedDocument,
@@ -25,18 +47,35 @@ def get_pdf_ingestion_service() -> PDFIngestionService:
     summary="Upload and Extract Research PDF",
     description=(
         "Validates a single uploaded research PDF (up to 20 MB), verifies its binary PDF "
-        "structure using PyMuPDF, extracts text page by page, detects scanned or low-text "
-        "documents, and returns the structured document representation."
+        "structure using PyMuPDF, extracts text page by page, stores the file in the "
+        "application-managed storage directory, persists document metadata in SQLite, "
+        "and returns the structured document representation."
     ),
 )
 async def upload_pdf_document(
     file: UploadFile = File(..., description="Single research PDF file to upload and extract."),
+    project_id: str | None = Query(
+        default=None,
+        description="Optional research project ID to associate this uploaded document with.",
+    ),
     service: PDFIngestionService = Depends(get_pdf_ingestion_service),
+    repo: PaperTrailRepository = Depends(get_repository),
 ) -> ExtractedDocument:
-    """Validate and extract text page by page from an uploaded PDF file."""
+    """Validate, extract text page by page, and persist metadata for an uploaded PDF file."""
     try:
+        if project_id is not None and not repo.project_exists(project_id):
+            raise HTTPException(
+                status_code=HTTPStatus.NOT_FOUND,
+                detail=f"Research project '{project_id}' was not found.",
+            )
+
         file_bytes = service.read_bounded_stream(file.file)
-        return service.ingest_bytes(file_bytes, filename=file.filename)
+        extracted = service.ingest_bytes(file_bytes, filename=file.filename)
+        return repo.save_document_and_file(
+            extracted=extracted,
+            file_bytes=file_bytes,
+            project_id=project_id,
+        )
     except PDFIngestionError as exc:
         raise HTTPException(
             status_code=exc.status_code,
@@ -55,12 +94,63 @@ async def upload_pdf_document(
 async def get_extracted_document(
     document_id: str,
     service: PDFIngestionService = Depends(get_pdf_ingestion_service),
+    repo: PaperTrailRepository = Depends(get_repository),
 ) -> ExtractedDocument:
-    """Retrieve a structured document from the in-memory session store."""
-    document = service.get_document(document_id)
+    """Retrieve a structured document from SQLite or the in-memory session store."""
+    document = repo.get_document(document_id) or service.get_document(document_id)
     if document is None:
         raise HTTPException(
             status_code=HTTPStatus.NOT_FOUND,
             detail=f"Document '{document_id}' was not found.",
         )
     return document
+
+
+@router.post(
+    "/{document_id}/extract",
+    response_model=ScientificPaperExtraction,
+    status_code=HTTPStatus.OK,
+    summary="Run Structured Scientific Extraction",
+    description=(
+        "Extracts structured scientific methodology, datasets, sample size, metrics, "
+        "quantitative results, claims, limitations, and verified verbatim supporting "
+        "passages from a processed document. Retrying updates the existing record "
+        "without creating duplicates."
+    ),
+)
+async def extract_scientific_paper(
+    document_id: str,
+    service: PDFIngestionService = Depends(get_pdf_ingestion_service),
+    repo: PaperTrailRepository = Depends(get_repository),
+    extractor: ScientificPaperExtractor = Depends(get_scientific_extractor),
+) -> ScientificPaperExtraction:
+    """Run or retry structured scientific extraction on a processed document and persist the result."""
+    document = repo.get_document(document_id) or service.get_document(document_id)
+    if document is None:
+        raise HTTPException(
+            status_code=HTTPStatus.NOT_FOUND,
+            detail=f"Document '{document_id}' was not found.",
+        )
+
+    extraction = await extractor.extract_document(document)
+    return repo.save_scientific_extraction(extraction)
+
+
+@router.get(
+    "/{document_id}/extraction",
+    response_model=ScientificPaperExtraction,
+    summary="Get Stored Scientific Extraction",
+    description="Retrieve the persisted structured scientific extraction for a document_id.",
+)
+async def get_scientific_extraction(
+    document_id: str,
+    repo: PaperTrailRepository = Depends(get_repository),
+) -> ScientificPaperExtraction:
+    """Retrieve a persisted ScientificPaperExtraction from SQLite."""
+    extraction = repo.get_scientific_extraction(document_id)
+    if extraction is None:
+        raise HTTPException(
+            status_code=HTTPStatus.NOT_FOUND,
+            detail=f"No scientific extraction found for document '{document_id}'.",
+        )
+    return extraction

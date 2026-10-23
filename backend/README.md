@@ -8,14 +8,25 @@ FastAPI backend service for **PaperTrail**, an AI research analysis platform.
 backend/
 ├── app/
 │   ├── __init__.py                 # Package version definition
-│   ├── config.py                   # App, API timeout, concurrency, cache, and PDF upload settings
+│   ├── config.py                   # App, API timeout, cache, PDF limits, SQLite, and Ollama settings
 │   ├── main.py                     # FastAPI application entry point and error handlers
-│   ├── schemas.py                  # Pydantic response, error, Paper, and ExtractedDocument models
+│   ├── schemas.py                  # Pydantic models for health, papers, documents, projects, and LLM
 │   ├── api/
 │   │   ├── __init__.py
 │   │   ├── routes.py               # GET /api/health and GET /api/version endpoints
 │   │   ├── papers.py               # GET /api/papers/search endpoint
-│   │   └── documents.py            # POST /api/documents/upload and GET /api/documents/{id}
+│   │   ├── documents.py            # POST /api/documents/upload, GET /api/documents/{id}, POST/GET extraction
+│   │   ├── projects.py             # /api/projects CRUD, paper associations, and project PDFs
+│   │   └── llm.py                  # GET /api/llm/status readiness check endpoint
+│   ├── db/
+│   │   ├── __init__.py
+│   │   ├── database.py             # SQLite connection manager and non-destructive migrations
+│   │   └── repository.py           # Data access layer and managed storage file cleanup
+│   ├── llm/
+│   │   ├── __init__.py
+│   │   ├── base.py                 # Workflow-independent BaseLLMProvider & bounded JSON validation
+│   │   ├── exceptions.py           # Controlled LLM exceptions (safe user-facing messages)
+│   │   └── ollama_provider.py      # Local Ollama HTTP API client (qwen2.5:1.5b)
 │   └── services/
 │       ├── __init__.py
 │       ├── cache.py                # Local TTL search response cache
@@ -24,77 +35,83 @@ backend/
 │       ├── exceptions.py           # Upstream API and PDF ingestion exceptions
 │       ├── normalization.py        # DOI, abstract, and verified PDF URL helpers
 │       ├── openalex_client.py      # Async OpenAlex REST API client
-│       └── pdf_ingestion.py        # Safe PyMuPDF validation and page-by-page text extraction
+│       ├── pdf_ingestion.py        # Safe PyMuPDF validation and page-by-page text extraction
+│       └── paper_extractor.py      # Structured scientific-paper extraction & ground-truth quote verifier
 ├── scripts/
-│   └── smoke_test_discovery.py     # Optional manual smoke test for live OpenAlex/Crossref APIs
+│   ├── init_db.py                  # Non-destructive SQLite schema initialization & migration CLI
+│   ├── smoke_test_discovery.py     # Optional manual smoke test for live OpenAlex/Crossref APIs
+│   ├── verify_ollama.py            # Local integration test for live Ollama (qwen2.5:1.5b)
+│   └── verify_real_paper_extraction.py # Live extraction & 7-point integrity audit on a real research paper
 ├── tests/
 │   ├── __init__.py
+│   ├── conftest.py                 # Isolates all tests with a temporary SQLite DB and storage dir
 │   ├── test_main.py                # pytest suite for health, version, CORS, and 404 handling
 │   ├── test_papers.py              # Mocked HTTP pytest suite for scholarly paper discovery
-│   └── test_pdf_ingestion.py       # pytest suite for PDF upload validation and extraction
+│   ├── test_pdf_ingestion.py       # pytest suite for PDF upload validation and extraction
+│   ├── test_projects_db.py         # pytest suite for SQLite persistence and cleanup rules
+│   ├── test_ollama_provider.py     # Mocked unit tests for OllamaProvider & structured validation
+│   └── test_paper_extractor.py     # Unit tests for scientific extraction, quote verification, and edge cases
 ├── requirements.txt                # Runtime dependencies
-├── requirements-dev.txt            # Development and testing dependencies (pytest, httpx)
-└── README.md                       # Setup, startup, limits, and testing documentation
+├── requirements-dev.txt            # Development and testing dependencies (pytest, httpx, pymupdf)
+└── README.md                       # Setup, database migrations, startup, and testing guide
 ```
-
-## PDF Ingestion & File-Size Limits
-
-- **Maximum PDF Upload Size:** `20 MB` (`20,971,520` bytes, configured via `MAX_PDF_UPLOAD_SIZE_BYTES` in `app/config.py`). Uploads exceeding 20 MB are rejected while streaming with `HTTP 413 Payload Too Large`.
-- **Binary Format Verification:** Uploaded files must contain a valid `%PDF-` binary signature and parse cleanly in PyMuPDF (`fitz`). Spoofed filenames or `Content-Type` headers are rejected with `HTTP 400 Bad Request`.
-- **Encrypted & Corrupted PDFs:** Password-protected/encrypted or malformed PDFs are rejected with `HTTP 400 Bad Request`.
-- **Minimum Extractable Text & Scanned PDF Detection:** A valid PDF must yield at least `50` non-whitespace characters across all pages (`MIN_EXTRACTABLE_TEXT_CHARS`). PDFs with insufficient text or image-only scanned pages are rejected with `HTTP 422 Unprocessable Entity` and a message indicating that **OCR may be required** (no OCR binaries are installed or executed automatically).
-- **Zero Temporary Disk Retention:** PDFs are parsed directly from bounded in-memory streams (`fitz.open(stream=..., filetype="pdf")`) and closed immediately. Raw PDF binaries are not stored permanently on disk or in a database.
 
 ---
 
-## 1. Setup (PowerShell)
+## Local LLM Configuration (Ollama)
 
-Open PowerShell and navigate to the `backend` directory:
+Configured in `app/config.py` (overrideable via environment variables):
+
+- `OLLAMA_BASE_URL`: Defaults to `http://127.0.0.1:11434`
+- `OLLAMA_MODEL`: Defaults to `qwen2.5:1.5b`
+- `OLLAMA_TIMEOUT_SECONDS`: Defaults to `120.0` seconds (`5.0` seconds connect timeout)
+- `OLLAMA_MAX_STRUCTURED_RETRIES`: Defaults to `2` bounded retries (hard-capped at `3` retries / `4` total attempts so unbounded generation loops are impossible).
+
+---
+
+## 1. Setup & Database Initialization (PowerShell)
 
 ```powershell
 cd C:\Users\priya\Desktop\papertrail\backend
-```
-
-Activate the virtual environment and ensure dependencies are installed:
-
-```powershell
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m scripts.init_db
 ```
 
 ---
 
-## 2. Startup (PowerShell)
-
-With the virtual environment activated inside `C:\Users\priya\Desktop\papertrail\backend`, start the development server using Uvicorn:
+## 2. Running Automated Unit Tests (Offline / Mocked)
 
 ```powershell
-python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-```
-
-Once running, you can verify the endpoints in a second PowerShell window or browser:
-
-- **Health Check:** `Invoke-RestMethod http://127.0.0.1:8000/api/health`
-- **Version Info:** `Invoke-RestMethod http://127.0.0.1:8000/api/version`
-- **Paper Search:** `Invoke-RestMethod "http://127.0.0.1:8000/api/papers/search?q=machine+learning&limit=5"`
-- **Interactive API Docs (Swagger UI):** `http://127.0.0.1:8000/docs`
-
----
-
-## 3. Running Unit Tests (PowerShell)
-
-From the `C:\Users\priya\Desktop\papertrail\backend` directory, run the complete `pytest` suite:
-
-```powershell
+cd C:\Users\priya\Desktop\papertrail\backend
 .\.venv\Scripts\python.exe -m pytest -v
 ```
 
 ---
 
-## 4. Optional Live API Smoke Test
+## 3. Verifying Local Ollama (`qwen2.5:1.5b`) Connection
 
-To manually test live queries against the OpenAlex and Crossref REST APIs:
+Ensure Ollama is running (`ollama list` shows `qwen2.5:1.5b`), then run the live integration verification script:
 
 ```powershell
-.\.venv\Scripts\python.exe -m scripts.smoke_test_discovery --query "retrieval augmented generation" --limit 5
+cd C:\Users\priya\Desktop\papertrail\backend
+.\.venv\Scripts\python.exe -m scripts.verify_ollama
 ```
+
+Or check the HTTP status endpoint while Uvicorn is running:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/api/llm/status
+```
+
+---
+
+## 4. Scientific Paper Structured Extraction & Local Real-Paper Audit
+
+Run the automated 7-point scientific integrity audit against a real open-access paper (`Attention Is All You Need`, Vaswani et al., 2017, arXiv:1706.03762) or pass `--pdf <path>` / `--url <pdf_url>`:
+
+```powershell
+cd C:\Users\priya\Desktop\papertrail\backend
+.\.venv\Scripts\python.exe -m scripts.verify_real_paper_extraction
+```
+

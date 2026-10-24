@@ -404,3 +404,46 @@ def test_api_endpoints_start_and_get_analysis(temp_repo: PaperTrailRepository) -
         assert data_get["analysis_id"] == f"analysis_{project.id}"
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.mark.anyio
+async def test_papers_only_project_materializes_documents(
+    temp_repo: PaperTrailRepository,
+) -> None:
+    """Verify projects with only discovered papers (0 uploaded PDFs) materialize documents and succeed."""
+    from app.schemas import Paper
+    from app.services.graph.nodes import ResearchWorkflowNodes
+
+    project = temp_repo.create_project(name="Papers Only Project")
+    paper1 = Paper(
+        id="https://openalex.org/W111111",
+        title="Vision Transformer for Potato Blight",
+        authors=["Alice Smith"],
+        publication_year=2023,
+        doi="10.1000/182",
+        abstract="We demonstrate ViT achieves 96.5% accuracy on potato late blight detection.",
+        source="openalex",
+    )
+    persisted = temp_repo.associate_paper_with_project(project.id, paper1)
+    assert persisted is not None
+
+    extractor = ScientificPaperExtractor(llm_provider=MockGraphLLMProvider())
+    nodes = ResearchWorkflowNodes(repository=temp_repo, extractor=extractor)
+    state = {
+        "project_id": project.id,
+        "status": "pending",
+        "current_node": "",
+        "retry_counts": {},
+        "node_history": [],
+        "document_ids": [],
+    }
+
+    res_load = await nodes.load_selected_papers(state)  # type: ignore[arg-type]
+    assert res_load["status"] == "in_progress"
+    assert len(res_load["document_ids"]) == 1
+
+    doc_id = res_load["document_ids"][0]
+    doc = temp_repo.get_document(doc_id)
+    assert doc is not None
+    assert doc.paper_id == persisted.id
+    assert "96.5% accuracy" in doc.pages[0].text

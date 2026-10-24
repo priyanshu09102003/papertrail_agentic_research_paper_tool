@@ -6,7 +6,13 @@ import logging
 import re
 from typing import BinaryIO
 
-import pymupdf as fitz  # PyMuPDF
+try:
+    import pymupdf as fitz  # PyMuPDF
+except ImportError:
+    try:
+        import fitz
+    except ImportError:
+        fitz = None
 
 from app.config import (
     MAX_PDF_UPLOAD_SIZE_BYTES,
@@ -192,6 +198,11 @@ class PDFIngestionService:
         if _PDF_MAGIC_SIGNATURE not in file_bytes[:1024]:
             raise UnsupportedFileFormatError(
                 "Invalid file format: uploaded file does not contain a valid '%PDF-' header."
+            )
+
+        if fitz is None:
+            raise CorruptedPDFError(
+                "PyMuPDF is not installed in the active environment. Please activate .venv or install PyMuPDF."
             )
 
         fitz.TOOLS.mupdf_warnings(reset=True)

@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #08090a;
+  --foreground: #f7f8f8;
 }
 
 @theme inline {
@@ -12,15 +12,228 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* ==========================================================================
+   Universal Invisible / Transparent Scrollbars (Project-Wide)
+   Completely removes visible scrollbar tracks, thumbs, and rails everywhere
+   ========================================================================== */
+*,
+*::before,
+*::after {
+  scrollbar-width: none !important; /* Firefox */
+  -ms-overflow-style: none !important; /* IE & Edge */
+}
+
+*::-webkit-scrollbar {
+  display: none !important;
+  width: 0px !important;
+  height: 0px !important;
+  background: transparent !important;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent !important;
+  display: none !important;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: transparent !important;
+  display: none !important;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent !important;
+  display: none !important;
+}
+
+html,
+body {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+  background-color: #08090a;
+  color: #f7f8f8;
+  font-family: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  overflow-x: hidden;
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  display: none !important;
+  width: 0px !important;
+  height: 0px !important;
+  background: transparent !important;
+}
+
+.custom-scrollbar,
+.no-scrollbar {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+.custom-scrollbar::-webkit-scrollbar,
+.no-scrollbar::-webkit-scrollbar {
+  display: none !important;
+  width: 0px !important;
+  height: 0px !important;
+  background: transparent !important;
+}
+
+/* ==========================================================================
+   Universal Cursor Pointer on Interactive Elements
+   ========================================================================== */
+button,
+[role="button"],
+input[type="button"],
+input[type="submit"],
+input[type="reset"],
+select,
+summary,
+a {
+  cursor: pointer !important;
+}
+
+button:disabled,
+[role="button"][aria-disabled="true"],
+input[type="button"]:disabled,
+input[type="submit"]:disabled,
+select:disabled {
+  cursor: not-allowed !important;
+}
+
+/* ==========================================================================
+   Background Flares & Scientific Grid Pattern
+   ========================================================================== */
+.bg-portal-grid {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* ==========================================================================
+   Card & Form Prominence (High Contrast, Deep Shadow, Themed Borders)
+   ========================================================================== */
+.portal-card {
+  position: relative;
+  background: linear-gradient(180deg, #13151c 0%, #0d0f14 100%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-top: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 
+    0 20px 48px -10px rgba(0, 0, 0, 0.85),
+    0 4px 16px -2px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255, 255, 255, 0.05),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(16px);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.portal-card:hover {
+  border-color: rgba(113, 112, 255, 0.38);
+  border-top-color: rgba(160, 159, 255, 0.6);
+  box-shadow: 
+    0 24px 54px -8px rgba(0, 0, 0, 0.9),
+    0 8px 24px -2px rgba(113, 112, 255, 0.15),
+    0 0 0 1px rgba(113, 112, 255, 0.25),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.2);
+}
+
+/* Distinct high-prominence form styling */
+.portal-form-container {
+  background: linear-gradient(180deg, #151824 0%, #0e1018 100%);
+  border: 1px solid rgba(113, 112, 255, 0.28);
+  border-top: 1px solid rgba(160, 159, 255, 0.45);
+  box-shadow: 
+    0 25px 60px -10px rgba(0, 0, 0, 0.9),
+    0 0 50px -15px rgba(113, 112, 255, 0.18),
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(20px);
+}
+
+/* Form Input & Select Elevation */
+.portal-input {
+  background-color: #0a0b0f !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.6), 0 1px 2px rgba(255, 255, 255, 0.02) !important;
+  color: #f7f8f8 !important;
+  transition: all 0.2s ease;
+}
+
+.portal-input:focus {
+  border-color: #7170ff !important;
+  box-shadow: 0 0 0 3px rgba(113, 112, 255, 0.28), inset 0 2px 4px rgba(0, 0, 0, 0.6) !important;
+  outline: none !important;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+.animate-fadeIn {
+  animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes logoDraw {
+  0% {
+    stroke-dashoffset: 400;
+    opacity: 0.2;
+  }
+  50% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+}
+
+@keyframes logoAuraPulse {
+  0%, 100% {
+    transform: scale(0.96);
+    opacity: 0.4;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 0.85;
+  }
+}
+
+@keyframes titleSlideUp {
+  0% {
+    opacity: 0;
+    transform: translateY(12px);
+    filter: blur(4px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+@keyframes beamScan {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-logo-aura {
+  animation: logoAuraPulse 2.8s ease-in-out infinite;
+}
+
+.animate-title-slide {
+  animation: titleSlideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-beam-scan {
+  animation: beamScan 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }

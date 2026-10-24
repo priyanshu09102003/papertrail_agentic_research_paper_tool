@@ -1,8 +1,11 @@
 """Discrete LangGraph node implementations for the PaperTrail research analysis workflow."""
 
 from datetime import datetime, timezone
+import hashlib
 import logging
 from typing import Any
+
+import httpx
 
 from app.db.repository import PaperTrailRepository
 from app.schemas import (
@@ -10,7 +13,10 @@ from app.schemas import (
     ComparisonItem,
     ConflictItem,
     EvidenceVerificationItem,
+    ExtractedDocument,
+    ExtractedPage,
     NodeExecutionRecord,
+    Paper,
     QuantitativeResult,
     ResearchAnalysisRecord,
     ResearchReport,
@@ -23,6 +29,7 @@ from app.services.contradiction_engine import (
 )
 from app.services.graph.state import NodeExecutionState, ResearchAnalysisState, utc_now_iso
 from app.services.paper_extractor import ScientificPaperExtractor, verify_quote_in_pages
+from app.services.pdf_ingestion import PDFIngestionService
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +102,72 @@ class ResearchWorkflowNodes:
             ],
         }
 
+    async def _ensure_document_for_paper(self, project_id: str, paper: Paper) -> str:
+        """Create or download an ExtractedDocument for a discovered paper."""
+        # 1. Try to fetch open-access PDF if available and fast (max 3 seconds)
+        if paper.open_access_pdf_url:
+            try:
+                async with httpx.AsyncClient(timeout=3.0, follow_redirects=True) as client:
+                    resp = await client.get(paper.open_access_pdf_url)
+                    if resp.status_code == 200 and resp.content.startswith(b"%PDF"):
+                        ingestion_service = PDFIngestionService()
+                        extracted = ingestion_service.ingest_bytes(
+                            resp.content, filename=f"paper_{paper.doi or paper.id[:10]}.pdf"
+                        )
+                        saved = self.repository.save_document_and_file(
+                            extracted=extracted,
+                            file_bytes=resp.content,
+                            project_id=project_id,
+                            paper_id=paper.id,
+                        )
+                        return saved.document_id
+            except Exception as exc:
+                logger.debug("Could not fetch open-access PDF for paper %s: %s", paper.id, exc)
+
+        # 2. Fall back to structured abstract and metadata
+        authors_str = ", ".join(paper.authors) if paper.authors else "Unknown Authors"
+        year_str = f" ({paper.publication_year})" if paper.publication_year else ""
+        doi_str = f"DOI: {paper.doi}\n" if paper.doi else ""
+        abstract_str = paper.abstract or f"Scholarly publication title: {paper.title}."
+
+        full_text = (
+            f"Title: {paper.title}\n"
+            f"Authors: {authors_str}{year_str}\n"
+            f"{doi_str}\n"
+            f"Abstract:\n{abstract_str}\n"
+        )
+        file_bytes = full_text.encode("utf-8")
+        raw_hash = hashlib.sha256(f"{project_id}:{paper.id}".encode("utf-8")).hexdigest()
+        doc_id = f"doc_paper_{raw_hash[:16]}"
+        safe_filename = f"paper_{raw_hash[:8]}.pdf"
+
+        page = ExtractedPage(
+            page_number=1,
+            text=full_text,
+            character_count=len(full_text),
+            word_count=len(full_text.split()),
+        )
+        extracted = ExtractedDocument(
+            document_id=doc_id,
+            project_id=project_id,
+            paper_id=paper.id,
+            filename=safe_filename,
+            stored_path=safe_filename,
+            file_size_bytes=max(len(file_bytes), 1),
+            page_count=1,
+            total_characters=len(full_text),
+            total_words=len(full_text.split()),
+            extraction_status="completed",
+            pages=[page],
+        )
+        saved = self.repository.save_document_and_file(
+            extracted=extracted,
+            file_bytes=file_bytes,
+            project_id=project_id,
+            paper_id=paper.id,
+        )
+        return saved.document_id
+
     # -------------------------------------------------------------------------
     # Node 2: Load Selected Papers
     # -------------------------------------------------------------------------
@@ -119,6 +192,16 @@ class ResearchWorkflowNodes:
 
         paper_ids = [p.id for p in project.papers]
         doc_ids = [d.document_id for d in project.documents]
+        existing_paper_doc_ids = {d.paper_id: d.document_id for d in project.documents if d.paper_id}
+
+        # For any discovered paper without a document, ensure an ExtractedDocument is created
+        for paper in project.papers:
+            if paper.id in existing_paper_doc_ids:
+                continue
+
+            doc_id = await self._ensure_document_for_paper(project_id, paper)
+            if doc_id and doc_id not in doc_ids:
+                doc_ids.append(doc_id)
 
         return {
             "status": "in_progress",

@@ -1,7 +1,15 @@
 """Main entry point for the PaperTrail FastAPI application."""
 
 from http import HTTPStatus
+from pathlib import Path
+import sys
 from typing import Any
+
+# Ensure backend/.venv site-packages is in sys.path if launched without activating .venv
+_backend_root = Path(__file__).resolve().parent.parent
+_venv_site_packages = _backend_root / ".venv" / "Lib" / "site-packages"
+if _venv_site_packages.exists() and str(_venv_site_packages) not in sys.path:
+    sys.path.insert(0, str(_venv_site_packages))
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError

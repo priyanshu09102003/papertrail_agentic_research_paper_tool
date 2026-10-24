@@ -16,6 +16,7 @@ export type ClaimGraphEdgeType =
   | 'depends_on';
 
 export interface ClaimGraphNodeData {
+  [key: string]: unknown;
   id: string;
   type: ClaimGraphNodeType;
   label: string;
@@ -32,6 +33,7 @@ export interface ClaimGraphNodeData {
 }
 
 export interface ClaimGraphEdgeData {
+  [key: string]: unknown;
   id: string;
   source: string;
   target: string;

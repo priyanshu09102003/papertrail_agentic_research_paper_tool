@@ -2,7 +2,7 @@
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 PaperSource = Literal["openalex", "crossref"]
 ExtractionStatus = Literal["completed", "failed"]
@@ -88,6 +88,12 @@ class PaperSearchResponse(BaseModel):
         default_factory=list,
         description="Normalized and deduplicated list of discovered scholarly papers.",
     )
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def papers(self) -> list[Paper]:
+        """Convenience alias for frontend consumers."""
+        return self.results
 
 
 class ExtractedPage(BaseModel):

@@ -9,6 +9,7 @@ from app.config import MANAGED_STORAGE_DIR, SQLITE_DB_PATH
 from app.db.database import DatabaseManager
 from app.db.repository import PaperTrailRepository
 from app.schemas import (
+    ClaimRelationship,
     DocumentMetadata,
     ExtractedDocument,
     Paper,
@@ -16,6 +17,7 @@ from app.schemas import (
     ProjectDeleteResponse,
     ProjectDetailResponse,
     ProjectResponse,
+    ScientificPaperExtraction,
 )
 from app.services.exceptions import PDFIngestionError
 from app.services.pdf_ingestion import PDFIngestionService
@@ -155,6 +157,71 @@ async def list_project_papers(
             detail=f"Research project '{project_id}' was not found.",
         )
     return papers
+
+
+@router.delete(
+    "/{project_id}/papers/{paper_id}",
+    status_code=HTTPStatus.NO_CONTENT,
+    summary="Remove Paper from Project",
+    description="Disassociate a scholarly paper from a research project.",
+)
+async def remove_paper_from_project(
+    project_id: str,
+    paper_id: str,
+    repo: PaperTrailRepository = Depends(get_repository),
+) -> None:
+    """Disassociate a paper from a project."""
+    if not repo.project_exists(project_id):
+        raise HTTPException(
+            status_code=HTTPStatus.NOT_FOUND,
+            detail=f"Research project '{project_id}' was not found.",
+        )
+    repo.remove_paper_from_project(project_id, paper_id)
+
+
+@router.get(
+    "/{project_id}/relationships",
+    response_model=list[ClaimRelationship],
+    summary="List Project Claim Relationships",
+    description="Retrieve all verified cross-paper claim relationships and potential contradictions for a project.",
+)
+async def list_project_claim_relationships(
+    project_id: str,
+    repo: PaperTrailRepository = Depends(get_repository),
+) -> list[ClaimRelationship]:
+    """Retrieve verified claim relationships for a project."""
+    if not repo.project_exists(project_id):
+        raise HTTPException(
+            status_code=HTTPStatus.NOT_FOUND,
+            detail=f"Research project '{project_id}' was not found.",
+        )
+    return repo.get_claim_relationships(project_id)
+
+
+@router.get(
+    "/{project_id}/extractions",
+    response_model=list[ScientificPaperExtraction],
+    summary="List Project Scientific Extractions",
+    description="Retrieve structured scientific methodology, metrics, and claims for all documents in a project.",
+)
+async def list_project_extractions(
+    project_id: str,
+    repo: PaperTrailRepository = Depends(get_repository),
+) -> list[ScientificPaperExtraction]:
+    """Retrieve extractions for all documents associated with a project."""
+    if not repo.project_exists(project_id):
+        raise HTTPException(
+            status_code=HTTPStatus.NOT_FOUND,
+            detail=f"Research project '{project_id}' was not found.",
+        )
+    doc_metas = repo.list_project_documents(project_id) or []
+    extractions: list[ScientificPaperExtraction] = []
+    for m in doc_metas:
+        ext = repo.get_scientific_extraction(m.document_id)
+        if ext:
+            extractions.append(ext)
+    return extractions
+
 
 
 @router.post(

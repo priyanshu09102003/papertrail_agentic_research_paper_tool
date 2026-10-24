@@ -442,3 +442,19 @@ def test_invalid_user_query_parameters() -> None:
 
     res_limit_high = client.get("/api/papers/search", params={"q": "machine learning", "limit": 100})
     assert res_limit_high.status_code == 422
+
+
+def test_query_alias_and_filters() -> None:
+    """Verify 'query' parameter alias and year/source filters work properly."""
+    client = TestClient(app)
+
+    # Calling with query parameter instead of q
+    res = client.get("/api/papers/search", params={
+        "query": "deep learning",
+        "source": "all",
+        "from_year": 2018,
+        "to_year": 2024,
+        "limit": 5,
+    })
+    # Must succeed (200) or upstream fallback, but never 422
+    assert res.status_code in (200, 502, 504)

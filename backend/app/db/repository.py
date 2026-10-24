@@ -362,6 +362,17 @@ class PaperTrailRepository:
 
         return [self._row_to_paper(row) for row in rows]
 
+    def remove_paper_from_project(self, project_id: str, paper_id: str) -> bool:
+        """Disassociate a paper from a research project."""
+        if not self.project_exists(project_id):
+            return False
+        with self._db.connect() as conn:
+            cursor = conn.execute(
+                "DELETE FROM project_papers WHERE project_id = ? AND paper_id = ?;",
+                (project_id, paper_id),
+            )
+            return cursor.rowcount > 0
+
     # -------------------------------------------------------------------------
     # Documents & Managed Storage
     # -------------------------------------------------------------------------

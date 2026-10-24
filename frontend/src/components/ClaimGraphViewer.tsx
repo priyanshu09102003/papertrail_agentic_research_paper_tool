@@ -352,10 +352,10 @@ export function ClaimGraphViewer({ projectId, projectName }: ClaimGraphViewerPro
             onChange={(e) => setSelectedPaperFilter(e.target.value)}
             className="text-xs bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200 px-2.5 py-1.5 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
-            <option value="all">All Papers ({graphData.available_papers.length})</option>
-            {graphData.available_papers.map((p) => (
+            <option value="all">All Papers ({(graphData.available_papers || []).length})</option>
+            {(graphData.available_papers || []).map((p) => (
               <option key={p.id} value={p.id}>
-                {p.title.length > 25 ? `${p.title.slice(0, 25)}...` : p.title}
+                {(p.title?.length ?? 0) > 25 ? `${p.title.slice(0, 25)}...` : p.title}
               </option>
             ))}
           </select>
